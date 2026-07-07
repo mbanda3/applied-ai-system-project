@@ -138,12 +138,232 @@ Sunrise City tops the list as a perfect genre + mood + energy match, exactly as 
 
 ## Experiments You Tried
 
-Use this section to document the experiments you ran. For example:
+**Weight shift: doubled energy (1.0 → 2.0), halved genre (2.0 → 1.0).** Max possible score stayed at 4.5 since the two shifts offset exactly, and `pytest` still passed, so the scoring formula itself remained valid.
 
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
+The ranking still changed for the starter profile (`genre=pop, mood=happy, energy=0.8`). With the original weights, the top 5 was Sunrise City, **Gym Hero**, **Rooftop Lights**, Warehouse Pulse, Carnival Step. With energy doubled and genre halved, **Rooftop Lights and Gym Hero swapped places** — a song with no genre match but a close energy fit (Rooftop Lights) out-ranked a song with a genre match but no mood match (Gym Hero). This isn't more "accurate" than the original weights — there's no ground truth to compare against — but it does confirm the ranking is genuinely sensitive to these weights rather than always dominated by genre.
 
+The original 2.0/1.0/1.0/0.5 weights were kept for the shipped version; see `model_card.md` for the full discussion.
+
+
+---
+Testing code for each profile and the top 5 results alongside edge cases: Loaded songs: 18
+
+Top 5 Recommendations for genre=pop, mood=happy, energy=0.8
+===========================================================
+
+1. Sunrise City by Neon Echo
+   Score:   4.39
+   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.98), acousticness match (+0.41)
+
+2. Gym Hero by Max Pulse
+   Score:   3.35
+   Reasons: genre match (+2.0), energy closeness (+0.87), acousticness match (+0.47)
+
+3. Rooftop Lights by Indigo Parade
+   Score:   2.29
+   Reasons: mood match (+1.0), energy closeness (+0.96), acousticness match (+0.33)
+
+4. Warehouse Pulse by Deep Circuit
+   Score:   1.40
+   Reasons: energy closeness (+0.92), acousticness match (+0.47)
+
+5. Carnival Step by Mango Static
+   Score:   1.38
+   Reasons: energy closeness (+1.00), acousticness match (+0.38)
+
+############################################################
+# Adversarial / edge case profiles
+############################################################
+
+Top 5 Recommendations for genre=metal, mood=peaceful, energy=0.95
+=================================================================
+
+1. Iron Cathedral by Grim Anvil
+   Score:   3.46
+   Reasons: genre match (+2.0), energy closeness (+0.98), acousticness match (+0.48)
+
+2. Gym Hero by Max Pulse
+   Score:   1.46
+   Reasons: energy closeness (+0.98), acousticness match (+0.47)
+
+3. Storm Runner by Voltline
+   Score:   1.41
+   Reasons: energy closeness (+0.96), acousticness match (+0.45)
+
+4. Warehouse Pulse by Deep Circuit
+   Score:   1.41
+   Reasons: energy closeness (+0.93), acousticness match (+0.47)
+
+5. Sunday Porch by Willow Creek
+   Score:   1.40
+   Reasons: mood match (+1.0), energy closeness (+0.35), acousticness match (+0.05)
+
+Top 5 Recommendations for genre=edm, mood=happy, energy=0.8
+===========================================================
+
+1. Sunrise City by Neon Echo
+   Score:   2.39
+   Reasons: mood match (+1.0), energy closeness (+0.98), acousticness match (+0.41)
+
+2. Rooftop Lights by Indigo Parade
+   Score:   2.29
+   Reasons: mood match (+1.0), energy closeness (+0.96), acousticness match (+0.33)
+
+3. Warehouse Pulse by Deep Circuit
+   Score:   1.40
+   Reasons: energy closeness (+0.92), acousticness match (+0.47)
+
+4. Carnival Step by Mango Static
+   Score:   1.38
+   Reasons: energy closeness (+1.00), acousticness match (+0.38)
+
+5. Gym Hero by Max Pulse
+   Score:   1.34
+   Reasons: energy closeness (+0.87), acousticness match (+0.47)
+
+Top 5 Recommendations for genre=pop, mood=happy, energy=1.5
+===========================================================
+
+1. Sunrise City by Neon Echo
+   Score:   3.73
+   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.32), acousticness match (+0.41)
+
+2. Gym Hero by Max Pulse
+   Score:   2.91
+   Reasons: genre match (+2.0), energy closeness (+0.43), acousticness match (+0.47)
+
+3. Rooftop Lights by Indigo Parade
+   Score:   1.58
+   Reasons: mood match (+1.0), energy closeness (+0.26), acousticness match (+0.33)
+
+4. Iron Cathedral by Grim Anvil
+   Score:   0.95
+   Reasons: energy closeness (+0.47), acousticness match (+0.48)
+
+5. Storm Runner by Voltline
+   Score:   0.86
+   Reasons: energy closeness (+0.41), acousticness match (+0.45)
+
+Top 5 Recommendations for genre=lofi, mood=chill, energy=-0.5
+=============================================================
+
+1. Midnight Coding by LoRoom
+   Score:   3.23
+   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.08), acousticness match (+0.15)
+
+2. Library Rain by Paper Lanterns
+   Score:   3.22
+   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.15), acousticness match (+0.07)
+
+3. Focus Flow by LoRoom
+   Score:   2.21
+   Reasons: genre match (+2.0), energy closeness (+0.10), acousticness match (+0.11)
+
+4. Spacewalk Thoughts by Orbit Bloom
+   Score:   1.26
+   Reasons: mood match (+1.0), energy closeness (+0.22), acousticness match (+0.04)
+
+5. Velvet Nights by Sable Moon
+   Score:   0.30
+   Reasons: energy closeness (+-0.05), acousticness match (+0.35)
+
+Top 5 Recommendations for genre=Pop, mood=Happy, energy=0.8
+===========================================================
+
+1. Warehouse Pulse by Deep Circuit
+   Score:   1.40
+   Reasons: energy closeness (+0.92), acousticness match (+0.47)
+
+2. Sunrise City by Neon Echo
+   Score:   1.39
+   Reasons: energy closeness (+0.98), acousticness match (+0.41)
+
+3. Carnival Step by Mango Static
+   Score:   1.38
+   Reasons: energy closeness (+1.00), acousticness match (+0.38)
+
+4. Gym Hero by Max Pulse
+   Score:   1.34
+   Reasons: energy closeness (+0.87), acousticness match (+0.47)
+
+5. Storm Runner by Voltline
+   Score:   1.34
+   Reasons: energy closeness (+0.89), acousticness match (+0.45)
+
+Top 5 Recommendations for genre=classical, mood=energetic, energy=0.95, likes_acoustic=True
+===========================================================================================
+
+1. Paper Moonlight by Aria Hollis
+   Score:   2.77
+   Reasons: genre match (+2.0), energy closeness (+0.30), acousticness match (+0.47)
+
+2. Warehouse Pulse by Deep Circuit
+   Score:   1.96
+   Reasons: mood match (+1.0), energy closeness (+0.93), acousticness match (+0.03)
+
+3. Storm Runner by Voltline
+   Score:   1.01
+   Reasons: energy closeness (+0.96), acousticness match (+0.05)
+
+4. Gym Hero by Max Pulse
+   Score:   1.01
+   Reasons: energy closeness (+0.98), acousticness match (+0.03)
+
+5. Iron Cathedral by Grim Anvil
+   Score:   0.99
+   Reasons: energy closeness (+0.98), acousticness match (+0.01)
+
+Top 5 Recommendations for mood=happy, energy=0.8
+================================================
+   ERROR: KeyError: 'genre'
+
+Top 5 Recommendations for genre=pop, mood=happy, energy=0.8, vibe=unstoppable, tempo_bpm=200
+============================================================================================
+
+1. Sunrise City by Neon Echo
+   Score:   4.39
+   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.98), acousticness match (+0.41)
+
+2. Gym Hero by Max Pulse
+   Score:   3.35
+   Reasons: genre match (+2.0), energy closeness (+0.87), acousticness match (+0.47)
+
+3. Rooftop Lights by Indigo Parade
+   Score:   2.29
+   Reasons: mood match (+1.0), energy closeness (+0.96), acousticness match (+0.33)
+
+4. Warehouse Pulse by Deep Circuit
+   Score:   1.40
+   Reasons: energy closeness (+0.92), acousticness match (+0.47)
+
+5. Carnival Step by Mango Static
+   Score:   1.38
+   Reasons: energy closeness (+1.00), acousticness match (+0.38)
+
+Top 5 Recommendations for genre=, mood=, energy=0.5
+===================================================
+
+1. Velvet Nights by Sable Moon
+   Score:   1.30
+   Reasons: energy closeness (+0.95), acousticness match (+0.35)
+
+2. Night Drive Loop by Neon Echo
+   Score:   1.14
+   Reasons: energy closeness (+0.75), acousticness match (+0.39)
+
+3. Highway Ghosts by Dust & Wire
+   Score:   1.12
+   Reasons: energy closeness (+0.92), acousticness match (+0.20)
+
+4. Warehouse Pulse by Deep Circuit
+   Score:   1.09
+   Reasons: energy closeness (+0.62), acousticness match (+0.47)
+
+5. Blue Hour by Marlow Sky
+   Score:   1.09
+   Reasons: energy closeness (+0.92), acousticness match (+0.17)
+
+---
 ---
 
 ## Limitations and Risks
