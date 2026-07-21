@@ -1,0 +1,22 @@
+flowchart LR
+
+A[User Input]
+
+--> B[Input Validation]
+
+B --> C[Recommendation Engine]
+
+C --> D[Song Dataset]
+
+D --> C
+
+C --> E[Recommendation Ranking]
+
+E --> F[Confidence Score]
+
+F --> G[Recommendation Output]
+
+G --> H[Logging]
+
+G --> I[Human Evaluation / Testing]
+
