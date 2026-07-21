@@ -1,22 +1,32 @@
-flowchart LR
+flowchart TD
+    U["User Input<br/>genre, mood, energy<br/>(demo profiles or python -m src.main --interactive)"]
 
-A[User Input]
+    U --> V{"Input Validation / Guardrails<br/>src/validation.py"}
 
---> B[Input Validation]
+    CAT[("Song Catalog<br/>data/songs.csv")]
 
-B --> C[Recommendation Engine]
+    V -->|"invalid"| REJ["Rejection Message<br/>+ specific reasons<br/>(bad genre/mood, energy out of range,<br/>non-numeric energy, missing fields)"]
+    V -->|"valid (normalized)"| SC["Recommender / Scorer<br/>src/recommender.py<br/>score_song + recommend_songs"]
 
-C --> D[Song Dataset]
+    CAT --> SC
 
-D --> C
+    SC --> CONF["Confidence Scoring<br/>compute_confidence()<br/>score / 4.5 -> 0-100%"]
+    SC --> EXP["Explanation Generator<br/>explain_recommendation()<br/>plain-language checkmarks"]
 
-C --> E[Recommendation Ranking]
+    CONF --> OUT["Console Output<br/>ranked songs, confidence %, reasons"]
+    EXP --> OUT
+    REJ --> OUT
 
-E --> F[Confidence Score]
+    OUT --> LOG["Logger<br/>src/logger.py<br/>logs/recommendation_log.txt<br/>(accepted AND rejected requests)"]
 
-F --> G[Recommendation Output]
+    OUT --> HUMAN["Human Review<br/>reads console output + log file,<br/>sanity-checks rankings/explanations"]
 
-G --> H[Logging]
+    subgraph TEST["Reliability Testing (tests/, run via pytest)"]
+        T1["test_reliability.py<br/>guardrails, confidence, logging"]
+        T2["test_recommender.py<br/>core scoring logic"]
+    end
 
-G --> I[Human Evaluation / Testing]
-
+    T1 -. "verifies" .-> V
+    T1 -. "verifies" .-> LOG
+    T2 -. "verifies" .-> SC
+    HUMAN -. "flags bugs / bad rankings" .-> TEST

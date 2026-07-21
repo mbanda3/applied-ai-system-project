@@ -2,6 +2,9 @@ import csv
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
+# Maximum possible additive score: 2.0 (genre) + 1.0 (mood) + 1.0 (energy) + 0.5 (acousticness)
+MAX_POSSIBLE_SCORE = 4.5
+
 @dataclass
 class Song:
     """
@@ -71,11 +74,11 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     score = 0.0
     reasons = []
 
-    if song["genre"] == user_prefs["genre"]:
+    if song["genre"].strip().lower() == str(user_prefs["genre"]).strip().lower():
         score += 2.0
         reasons.append("genre match (+2.0)")
 
-    if song["mood"] == user_prefs["mood"]:
+    if song["mood"].strip().lower() == str(user_prefs["mood"]).strip().lower():
         score += 1.0
         reasons.append("mood match (+1.0)")
 
@@ -101,3 +104,37 @@ def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tup
 
     ranked = sorted(scored, key=lambda item: item[1], reverse=True)
     return ranked[:k]
+
+def compute_confidence(score: float, max_score: float = MAX_POSSIBLE_SCORE) -> float:
+    """Normalize a raw additive score into a 0.0-1.0 confidence value the user can read at a glance."""
+    return max(0.0, min(score / max_score, 1.0))
+
+def explain_recommendation(user_prefs: Dict, song: Dict) -> List[str]:
+    """Build a human-readable, bulleted explanation of why a song matches (or doesn't match) user_prefs."""
+    lines = []
+
+    if song["genre"].strip().lower() == str(user_prefs["genre"]).strip().lower():
+        lines.append(f"✓ Genre matches {song['genre'].title()}")
+    else:
+        lines.append(f"✗ Genre is {song['genre'].title()}, not {str(user_prefs['genre']).title()}")
+
+    if song["mood"].strip().lower() == str(user_prefs["mood"]).strip().lower():
+        lines.append(f"✓ Mood matches {song['mood'].title()}")
+    else:
+        lines.append(f"✗ Mood is {song['mood'].title()}, not {str(user_prefs['mood']).title()}")
+
+    energy_diff = abs(song["energy"] - user_prefs["energy"])
+    if energy_diff <= 0.05:
+        lines.append(f"✓ Energy is very similar ({song['energy']:.2f} vs {user_prefs['energy']:.2f})")
+    elif energy_diff <= 0.2:
+        lines.append(f"✓ Energy is fairly close ({song['energy']:.2f} vs {user_prefs['energy']:.2f})")
+    else:
+        lines.append(f"✗ Energy differs noticeably ({song['energy']:.2f} vs {user_prefs['energy']:.2f})")
+
+    if user_prefs.get("likes_acoustic"):
+        if song["acousticness"] >= 0.6:
+            lines.append(f"✓ Acoustic sound matches your preference ({song['acousticness']:.2f})")
+        else:
+            lines.append(f"✗ Not very acoustic ({song['acousticness']:.2f})")
+
+    return lines

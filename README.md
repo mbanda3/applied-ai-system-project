@@ -1,395 +1,221 @@
-# 🎵 Music Recommender Simulation
+# 🎵 VibeFinder — Music Recommender Simulation
 
-## Project Summary
-
-In this project you will build and explain a small music recommender system.
-
-Your goal is to:
-
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
-
-This project is a content-based music recommender: given a small catalog of songs and a listener's stated taste profile, it scores every song against that profile and returns the top matches with a plain-language explanation of why each was picked. There's no listening history or collaborative filtering here — every recommendation is based purely on comparing a song's own attributes (genre, mood, energy, acousticness) to what the user says they want, which is what makes it "content-based." The goal is to make the scoring math fully transparent so it's easy to see exactly why the system ranked one song above another.
+A small, fully-transparent content-based recommender with input guardrails, confidence scoring, human-readable explanations, and an automated reliability test suite.
 
 ---
 
-## How The System Works
+## Original Project
 
-### Song features
+**Music Recommender Simulation ("VibeFinder"),** built in Modules 1–3 of this course. The original goal was to represent songs and a listener's "taste profile" as plain data, design a transparent scoring rule that turns that data into ranked recommendations, and evaluate where the resulting system gets things right versus where it's biased. It shipped as a content-based recommender: given a small 18-song catalog and a user-stated profile (genre, mood, energy, and an acoustic preference), it scored every song against that profile and returned the top matches with a plain-language breakdown of the score — no listening history or collaborative filtering, just direct attribute comparison.
 
-Each `Song` carries the following fields: `id`, `title`, `artist`, `genre`, `mood`, `energy`, `tempo_bpm`, `valence`, `danceability`, `acousticness`.
-
-Of these, the scoring rule only uses four: **genre**, **mood**, **energy**, and **acousticness**. The other three (`tempo_bpm`, `valence`, `danceability`) were left out of the scoring math on purpose — in this catalog they correlate heavily with `energy` (fast tempo and high danceability track high energy almost 1:1), so including them would mostly double-count a signal `energy` already captures, without adding much new information.
-
-### UserProfile fields
-
-`UserProfile` stores exactly the four preferences the scoring rule needs:
-
-- `favorite_genre` (str) — the listener's preferred genre, compared against `Song.genre`
-- `favorite_mood` (str) — the listener's preferred mood, compared against `Song.mood`
-- `target_energy` (float, 0–1) — the energy level the listener wants right now, compared against `Song.energy`
-- `likes_acoustic` (bool) — whether the listener prefers acoustic/organic sound over produced/electronic sound, compared against `Song.acousticness`
-
-### How the Recommender scores a song — Algorithm Recipe
-
-Each song is scored with additive points rather than a normalized 0–1 blend, so it's easy to see exactly which factors contributed how much:
-
-- **Genre match: +2.0 points** — awarded if `song.genre == user.favorite_genre`, else 0. Weighted highest because a favorite genre is the most deliberate, explicit signal the user gives.
-- **Mood match: +1.0 point** — awarded if `song.mood == user.favorite_mood`, else 0.
-- **Energy closeness: up to +1.0 point** — `1 - abs(song.energy - user.target_energy)`. This rewards songs whose energy is *close* to what the user wants, not just songs with high energy — a user who wants `target_energy = 0.3` should get chill songs ranked highest, not the most intense ones.
-- **Acousticness match: up to +0.5 point** — `song.acousticness` if `user.likes_acoustic` is `True`, otherwise `1 - song.acousticness`. Smooth, proportional credit instead of a hard yes/no cutoff, kept as a minor tiebreaker rather than a primary signal.
-
-```
-score = 2.0 * genre_match       # 0 or 1
-      + 1.0 * mood_match        # 0 or 1
-      + 1.0 * energy_score      # 0.0 - 1.0
-      + 0.5 * acoustic_score    # 0.0 - 1.0
-```
-
-Maximum possible score is 4.5 (perfect genre + mood + energy + acousticness match).
-
-#### Known biases in this recipe
-
-- **Genre dominance** — genre alone (+2.0) outweighs mood (+1.0) and energy (up to +1.0) combined-ish, so a song can out-rank a much better mood/energy fit purely by sharing a genre label. A song that's a *perfect* mood and energy match (worth 2.0) still loses to a same-genre song with a mediocre mood/energy fit (2.0 + partial credit). Great songs that match the user's mood and vibe but sit in a different genre bucket can get buried.
-- **Exact-string matching is brittle** — `"pop"` and `"indie pop"` are treated as a total mismatch (0 points) even though they're related, which can penalize genre-adjacent songs disproportionately hard given genre's high weight.
-- **Small catalog exaggerates weight effects** — with only 18 songs, a couple of point values can flip the entire top-5, so these weights should be re-checked if the catalog grows.
-
-See [Limitations and Risks](#limitations-and-risks) for the broader picture.
-
-### How songs are chosen
-
-Scoring and ranking are kept as two separate steps: `score_song` computes one song's score in isolation, and `recommend_songs` calls it once per song in the catalog, sorts all the results from highest score to lowest, and returns the top `k`. Keeping these separate means the scoring math can be tested independently of the sorting/selection logic.
+This repo extends that project with a **Reliability & Testing System**: input validation, confidence scoring, explanation generation, logging, error handling, and an automated test suite, all wired directly into the recommendation pipeline rather than bolted on as a side script.
 
 ---
 
-## Getting Started
+## Summary
 
-### Setup
+VibeFinder takes a genre/mood/energy profile and returns a ranked list of songs, each with a **confidence percentage** and a **plain-language explanation** of why it was picked — instead of a raw, uninterpretable score. Bad input (a genre not in the catalog, an energy value outside 0–1, a missing field) is caught by validation guardrails and rejected with a specific, actionable message rather than crashing the program or silently producing a nonsense ranking. Every request — accepted or rejected — is logged to disk, and a 6-test reliability suite verifies the guardrails, scoring, and logging all behave correctly.
 
-1. Create a virtual environment (optional but recommended):
+Why this matters: any AI system that ranks or recommends things needs a way to (1) reject input it can't handle safely, (2) communicate how confident it is, (3) explain its reasoning, and (4) leave an audit trail. This project is a small, inspectable example of all four, built on top of a scoring rule simple enough that every part of the pipeline can be reasoned about by hand.
+
+---
+
+## Architecture Overview
+
+The system is a straight `input → process → output` pipeline, with validation gating entry and a human/testing layer checking the result on both ends. Source of truth: [`diagrams/architecture.mmd`](diagrams/architecture.mmd).
+
+```mermaid
+flowchart TD
+    U["User Input<br/>genre, mood, energy<br/>(demo profiles or python -m src.main --interactive)"]
+
+    U --> V{"Input Validation / Guardrails<br/>src/validation.py"}
+
+    CAT[("Song Catalog<br/>data/songs.csv")]
+
+    V -->|"invalid"| REJ["Rejection Message<br/>+ specific reasons<br/>(bad genre/mood, energy out of range,<br/>non-numeric energy, missing fields)"]
+    V -->|"valid (normalized)"| SC["Recommender / Scorer<br/>src/recommender.py<br/>score_song + recommend_songs"]
+
+    CAT --> SC
+
+    SC --> CONF["Confidence Scoring<br/>compute_confidence()<br/>score / 4.5 -> 0-100%"]
+    SC --> EXP["Explanation Generator<br/>explain_recommendation()<br/>plain-language checkmarks"]
+
+    CONF --> OUT["Console Output<br/>ranked songs, confidence %, reasons"]
+    EXP --> OUT
+    REJ --> OUT
+
+    OUT --> LOG["Logger<br/>src/logger.py<br/>logs/recommendation_log.txt<br/>(accepted AND rejected requests)"]
+
+    OUT --> HUMAN["Human Review<br/>reads console output + log file,<br/>sanity-checks rankings/explanations"]
+
+    subgraph TEST["Reliability Testing (tests/, run via pytest)"]
+        T1["test_reliability.py<br/>guardrails, confidence, logging"]
+        T2["test_recommender.py<br/>core scoring logic"]
+    end
+
+    T1 -. "verifies" .-> V
+    T1 -. "verifies" .-> LOG
+    T2 -. "verifies" .-> SC
+    HUMAN -. "flags bugs / bad rankings" .-> TEST
+```
+
+**Components:**
+
+- **Validator** (`src/validation.py`) — the guardrail. Derives valid genres/moods directly from `data/songs.csv` (so it can never drift out of sync with the data) and checks energy is a real number in `0.0–1.0`. Bad input never reaches the scorer.
+- **Recommender / Scorer** (`src/recommender.py`) — the original additive scoring rule (genre + mood + energy + acousticness), unchanged in its core logic.
+- **Confidence Scoring** (`compute_confidence()`) — normalizes the raw score into a 0–100% figure a non-technical user can read.
+- **Explanation Generator** (`explain_recommendation()`) — turns the scoring breakdown into ✓/✗ plain-language bullets.
+- **Logger** (`src/logger.py`) — append-only audit trail of every accepted recommendation and every rejected input.
+- **Reliability Testing** (`tests/`) — `pytest` suite that verifies the validator, scorer, and logger independently of any single run.
+- **Human Review** — the console output and log file are designed to be human-readable at a glance, so a person (not just a test) can sanity-check any given recommendation.
+
+---
+
+## How the Recommender Scores a Song
+
+Each song is scored against a user profile with additive points, so it's always possible to see exactly which factor contributed how much:
+
+```
+score = 2.0 * genre_match       # 1 if song.genre == user.genre, else 0
+      + 1.0 * mood_match        # 1 if song.mood == user.mood, else 0
+      + 1.0 * energy_score      # 1 - abs(song.energy - user.energy), 0.0-1.0
+      + 0.5 * acoustic_score    # song.acousticness, or 1 - it if user dislikes acoustic
+```
+
+Maximum possible score is **4.5** (perfect genre + mood + energy + acousticness match) — this is the denominator `compute_confidence()` divides by to get a percentage. Genre is weighted highest because a stated favorite genre is the most deliberate, explicit signal a user gives; acousticness is weighted lowest and acts more as a tiebreaker.
+
+---
+
+## Setup Instructions
+
+1. **Create a virtual environment** (optional but recommended):
 
    ```bash
    python -m venv .venv
    source .venv/bin/activate      # Mac or Linux
    .venv\Scripts\activate         # Windows
+   ```
 
-2. Install dependencies
+2. **Install dependencies:**
 
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3. Run the app:
+3. **Run the app:**
 
-```bash
-python -m src.main
-```
+   ```bash
+   python -m src.main
+   ```
 
-### Running Tests
+   This runs a starter profile plus a set of adversarial/edge-case profiles that exercise the guardrails, and writes every recommendation/rejection to `logs/recommendation_log.txt` (created automatically — no setup needed).
 
-Run the starter tests with:
+4. **Or run it interactively**, entering your own genre/mood/energy:
 
-```bash
-pytest
-```
+   ```bash
+   python -m src.main --interactive
+   ```
 
-You can add more tests in `tests/test_recommender.py`.
+5. **Run the tests:**
 
----
-
-## Sample Recommendation Output
-
-Output of `python -m src.main` using the starter profile (`genre=pop, mood=happy, energy=0.8`):
-
-```
-Loaded songs: 18
-
-Top 5 Recommendations for genre=pop, mood=happy, energy=0.8
-===========================================================
-
-1. Sunrise City by Neon Echo
-   Score:   4.39
-   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.98), acousticness match (+0.41)
-
-2. Gym Hero by Max Pulse
-   Score:   3.35
-   Reasons: genre match (+2.0), energy closeness (+0.87), acousticness match (+0.47)
-
-3. Rooftop Lights by Indigo Parade
-   Score:   2.29
-   Reasons: mood match (+1.0), energy closeness (+0.96), acousticness match (+0.33)
-
-4. Warehouse Pulse by Deep Circuit
-   Score:   1.40
-   Reasons: energy closeness (+0.92), acousticness match (+0.47)
-
-5. Carnival Step by Mango Static
-   Score:   1.38
-   Reasons: energy closeness (+1.00), acousticness match (+0.38)
-```
-
-Sunrise City tops the list as a perfect genre + mood + energy match, exactly as expected. Rooftop Lights is a good example of the "genre dominance" bias noted above: it matches mood and energy closely but only ranks #3 because `"indie pop"` doesn't exact-match `"pop"`, costing it the full +2.0 genre bonus.
-
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or demo video link here -->
+   ```bash
+   pytest
+   ```
 
 ---
 
-## Experiments You Tried
+## Sample Interactions
 
-**Weight shift: doubled energy (1.0 → 2.0), halved genre (2.0 → 1.0).** Max possible score stayed at 4.5 since the two shifts offset exactly, and `pytest` still passed, so the scoring formula itself remained valid.
+**1. Valid input — high-confidence match**
 
-The ranking still changed for the starter profile (`genre=pop, mood=happy, energy=0.8`). With the original weights, the top 5 was Sunrise City, **Gym Hero**, **Rooftop Lights**, Warehouse Pulse, Carnival Step. With energy doubled and genre halved, **Rooftop Lights and Gym Hero swapped places** — a song with no genre match but a close energy fit (Rooftop Lights) out-ranked a song with a genre match but no mood match (Gym Hero). This isn't more "accurate" than the original weights — there's no ground truth to compare against — but it does confirm the ranking is genuinely sensitive to these weights rather than always dominated by genre.
+Input: `genre=pop, mood=happy, energy=0.8`
 
-The original 2.0/1.0/1.0/0.5 weights were kept for the shipped version; see `model_card.md` for the full discussion.
+```
+1. Sunrise City by Neon Echo
+   Confidence: 98%
+   Why this recommendation?
+     ✓ Genre matches Pop
+     ✓ Mood matches Happy
+     ✓ Energy is very similar (0.82 vs 0.80)
 
+Recommendation logged successfully.
+```
+
+**2. Invalid genre — rejected by the guardrail**
+
+Input: `genre=edm, mood=happy, energy=0.8`
+
+```
+Input rejected:
+  - Invalid genre 'edm'. Choose one of: ambient, blues, classical, country, folk, house, indie pop, jazz, latin, lofi, metal, pop, r&b, rock, synthwave
+```
+
+**3. Energy out of range — rejected instead of silently mis-scored**
+
+Input: `genre=pop, mood=happy, energy=1.5`
+
+```
+Input rejected:
+  - Energy must be between 0 and 1, got 1.5.
+```
+
+**4. Case mismatch — now normalized instead of silently failing**
+
+Input: `genre=Pop, mood=Happy, energy=0.8` (same real preferences as example 1, different capitalization)
+
+```
+1. Sunrise City by Neon Echo
+   Confidence: 98%
+   Why this recommendation?
+     ✓ Genre matches Pop
+     ✓ Mood matches Happy
+     ✓ Energy is very similar (0.82 vs 0.80)
+```
+
+Before validation was added, this exact input returned a completely different (and wrong) top result, because genre/mood comparisons were case-sensitive — see [Testing Summary](#testing-summary).
 
 ---
-Testing code for each profile and the top 5 results alongside edge cases: Loaded songs: 18
 
-Top 5 Recommendations for genre=pop, mood=happy, energy=0.8
-===========================================================
+## Design Decisions
 
-1. Sunrise City by Neon Echo
-   Score:   4.39
-   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.98), acousticness match (+0.41)
-
-2. Gym Hero by Max Pulse
-   Score:   3.35
-   Reasons: genre match (+2.0), energy closeness (+0.87), acousticness match (+0.47)
-
-3. Rooftop Lights by Indigo Parade
-   Score:   2.29
-   Reasons: mood match (+1.0), energy closeness (+0.96), acousticness match (+0.33)
-
-4. Warehouse Pulse by Deep Circuit
-   Score:   1.40
-   Reasons: energy closeness (+0.92), acousticness match (+0.47)
-
-5. Carnival Step by Mango Static
-   Score:   1.38
-   Reasons: energy closeness (+1.00), acousticness match (+0.38)
-
-############################################################
-# Adversarial / edge case profiles
-############################################################
-
-Top 5 Recommendations for genre=metal, mood=peaceful, energy=0.95
-=================================================================
-
-1. Iron Cathedral by Grim Anvil
-   Score:   3.46
-   Reasons: genre match (+2.0), energy closeness (+0.98), acousticness match (+0.48)
-
-2. Gym Hero by Max Pulse
-   Score:   1.46
-   Reasons: energy closeness (+0.98), acousticness match (+0.47)
-
-3. Storm Runner by Voltline
-   Score:   1.41
-   Reasons: energy closeness (+0.96), acousticness match (+0.45)
-
-4. Warehouse Pulse by Deep Circuit
-   Score:   1.41
-   Reasons: energy closeness (+0.93), acousticness match (+0.47)
-
-5. Sunday Porch by Willow Creek
-   Score:   1.40
-   Reasons: mood match (+1.0), energy closeness (+0.35), acousticness match (+0.05)
-
-Top 5 Recommendations for genre=edm, mood=happy, energy=0.8
-===========================================================
-
-1. Sunrise City by Neon Echo
-   Score:   2.39
-   Reasons: mood match (+1.0), energy closeness (+0.98), acousticness match (+0.41)
-
-2. Rooftop Lights by Indigo Parade
-   Score:   2.29
-   Reasons: mood match (+1.0), energy closeness (+0.96), acousticness match (+0.33)
-
-3. Warehouse Pulse by Deep Circuit
-   Score:   1.40
-   Reasons: energy closeness (+0.92), acousticness match (+0.47)
-
-4. Carnival Step by Mango Static
-   Score:   1.38
-   Reasons: energy closeness (+1.00), acousticness match (+0.38)
-
-5. Gym Hero by Max Pulse
-   Score:   1.34
-   Reasons: energy closeness (+0.87), acousticness match (+0.47)
-
-Top 5 Recommendations for genre=pop, mood=happy, energy=1.5
-===========================================================
-
-1. Sunrise City by Neon Echo
-   Score:   3.73
-   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.32), acousticness match (+0.41)
-
-2. Gym Hero by Max Pulse
-   Score:   2.91
-   Reasons: genre match (+2.0), energy closeness (+0.43), acousticness match (+0.47)
-
-3. Rooftop Lights by Indigo Parade
-   Score:   1.58
-   Reasons: mood match (+1.0), energy closeness (+0.26), acousticness match (+0.33)
-
-4. Iron Cathedral by Grim Anvil
-   Score:   0.95
-   Reasons: energy closeness (+0.47), acousticness match (+0.48)
-
-5. Storm Runner by Voltline
-   Score:   0.86
-   Reasons: energy closeness (+0.41), acousticness match (+0.45)
-
-Top 5 Recommendations for genre=lofi, mood=chill, energy=-0.5
-=============================================================
-
-1. Midnight Coding by LoRoom
-   Score:   3.23
-   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.08), acousticness match (+0.15)
-
-2. Library Rain by Paper Lanterns
-   Score:   3.22
-   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.15), acousticness match (+0.07)
-
-3. Focus Flow by LoRoom
-   Score:   2.21
-   Reasons: genre match (+2.0), energy closeness (+0.10), acousticness match (+0.11)
-
-4. Spacewalk Thoughts by Orbit Bloom
-   Score:   1.26
-   Reasons: mood match (+1.0), energy closeness (+0.22), acousticness match (+0.04)
-
-5. Velvet Nights by Sable Moon
-   Score:   0.30
-   Reasons: energy closeness (+-0.05), acousticness match (+0.35)
-
-Top 5 Recommendations for genre=Pop, mood=Happy, energy=0.8
-===========================================================
-
-1. Warehouse Pulse by Deep Circuit
-   Score:   1.40
-   Reasons: energy closeness (+0.92), acousticness match (+0.47)
-
-2. Sunrise City by Neon Echo
-   Score:   1.39
-   Reasons: energy closeness (+0.98), acousticness match (+0.41)
-
-3. Carnival Step by Mango Static
-   Score:   1.38
-   Reasons: energy closeness (+1.00), acousticness match (+0.38)
-
-4. Gym Hero by Max Pulse
-   Score:   1.34
-   Reasons: energy closeness (+0.87), acousticness match (+0.47)
-
-5. Storm Runner by Voltline
-   Score:   1.34
-   Reasons: energy closeness (+0.89), acousticness match (+0.45)
-
-Top 5 Recommendations for genre=classical, mood=energetic, energy=0.95, likes_acoustic=True
-===========================================================================================
-
-1. Paper Moonlight by Aria Hollis
-   Score:   2.77
-   Reasons: genre match (+2.0), energy closeness (+0.30), acousticness match (+0.47)
-
-2. Warehouse Pulse by Deep Circuit
-   Score:   1.96
-   Reasons: mood match (+1.0), energy closeness (+0.93), acousticness match (+0.03)
-
-3. Storm Runner by Voltline
-   Score:   1.01
-   Reasons: energy closeness (+0.96), acousticness match (+0.05)
-
-4. Gym Hero by Max Pulse
-   Score:   1.01
-   Reasons: energy closeness (+0.98), acousticness match (+0.03)
-
-5. Iron Cathedral by Grim Anvil
-   Score:   0.99
-   Reasons: energy closeness (+0.98), acousticness match (+0.01)
-
-Top 5 Recommendations for mood=happy, energy=0.8
-================================================
-   ERROR: KeyError: 'genre'
-
-Top 5 Recommendations for genre=pop, mood=happy, energy=0.8, vibe=unstoppable, tempo_bpm=200
-============================================================================================
-
-1. Sunrise City by Neon Echo
-   Score:   4.39
-   Reasons: genre match (+2.0), mood match (+1.0), energy closeness (+0.98), acousticness match (+0.41)
-
-2. Gym Hero by Max Pulse
-   Score:   3.35
-   Reasons: genre match (+2.0), energy closeness (+0.87), acousticness match (+0.47)
-
-3. Rooftop Lights by Indigo Parade
-   Score:   2.29
-   Reasons: mood match (+1.0), energy closeness (+0.96), acousticness match (+0.33)
-
-4. Warehouse Pulse by Deep Circuit
-   Score:   1.40
-   Reasons: energy closeness (+0.92), acousticness match (+0.47)
-
-5. Carnival Step by Mango Static
-   Score:   1.38
-   Reasons: energy closeness (+1.00), acousticness match (+0.38)
-
-Top 5 Recommendations for genre=, mood=, energy=0.5
-===================================================
-
-1. Velvet Nights by Sable Moon
-   Score:   1.30
-   Reasons: energy closeness (+0.95), acousticness match (+0.35)
-
-2. Night Drive Loop by Neon Echo
-   Score:   1.14
-   Reasons: energy closeness (+0.75), acousticness match (+0.39)
-
-3. Highway Ghosts by Dust & Wire
-   Score:   1.12
-   Reasons: energy closeness (+0.92), acousticness match (+0.20)
-
-4. Warehouse Pulse by Deep Circuit
-   Score:   1.09
-   Reasons: energy closeness (+0.62), acousticness match (+0.47)
-
-5. Blue Hour by Marlow Sky
-   Score:   1.09
-   Reasons: energy closeness (+0.92), acousticness match (+0.17)
+- **Additive scoring over a normalized blend.** Each factor (genre +2.0, mood +1.0, energy up to +1.0, acousticness up to +0.5) contributes independently, so anyone reading the explanation can see exactly which factors drove a song's rank. The trade-off is that genre dominates the total (a genre match alone outweighs a perfect mood + energy match), which is a real, acknowledged bias rather than a hidden one — see [Limitations](#limitations).
+- **Guardrails derived from the catalog, not a hardcoded list.** `validate_profile()` reads valid genres/moods from `data/songs.csv` at load time instead of a fixed set like `{"pop", "rock", "hip-hop", ...}`. The trade-off is one extra dependency (validation now needs the loaded catalog as an argument), but it means validation can never silently reject a genre that's actually in the data, or accept one that isn't.
+- **Confidence as `score / max_possible_score`, clamped to [0, 1].** Simple and directly traceable back to the scoring recipe, at the cost of not being a calibrated probability — a 74% confidence doesn't mean "74% likely to be liked," only "74% of the maximum possible score."
+- **Log both successes and failures.** `logs/recommendation_log.txt` records rejected input as well as accepted recommendations. This costs a bit of log verbosity, but means the log is also useful for debugging guardrail behavior later, not just for auditing what was recommended.
+- **Kept exact-string matching for genre/mood** (fixing only case-sensitivity, not fuzzy matching). A more forgiving matcher (e.g., treating `"indie pop"` as partially matching `"pop"`) would soften the genre-dominance bias, but it would also make the scoring harder to explain in one line — I chose transparency over recall here, and documented the resulting brittleness instead of hiding it.
+- **Validation and logging as separate modules** (`validation.py`, `logger.py`) rather than folded into `recommender.py` or `main.py`. Keeps each concern independently testable and means the core scoring logic wasn't touched to add reliability features.
+- **Verified the weights weren't arbitrary by perturbing them.** As an experiment, I doubled the energy weight (1.0 → 2.0) and halved the genre weight (2.0 → 1.0) — the max score stayed 4.5 and `pytest` still passed, but the actual top-5 ranking for the starter profile changed (two songs swapped places). That confirmed the ranking is genuinely sensitive to these weights, not always dominated by genre regardless of their values, before committing to the original 2.0/1.0/1.0/0.5 split.
 
 ---
+
+## Testing Summary
+
+**What worked:** All 8 tests pass — the 2 original scoring tests plus 6 new reliability tests covering validation (valid input passes, invalid genre/empty mood/out-of-range energy are all rejected), end-to-end recommendation generation, and log-file writing.
+
+```
+8 tests executed
+8 passed
+```
+
+Across the demo's valid profiles, the top recommendation's confidence averaged **0.86**, and every profile in the adversarial edge-case set (unknown genre, energy above 1 or below 0, a non-numeric energy string, a missing genre field, empty genre/mood strings) was rejected cleanly with a specific reason — none of them crashed the program.
+
+**What didn't work initially:** Before adding guardrails, a missing `genre` key crashed the whole program with a `KeyError`; an energy value like `-0.5` produced a silently negative internal score with no floor; and `{"genre": "Pop", "mood": "Happy"}` scored as a total genre/mood mismatch purely because of capitalization, even though it represents the exact same preferences as `{"genre": "pop", "mood": "happy"}`. All three were only discoverable by deliberately probing the system with adversarial input — they didn't show up under normal use.
+
+**What I learned:** Writing the reliability tests *before* trusting any given run surfaced a real correctness bug (the case-sensitivity issue) that had been sitting in the scoring logic the whole time, disguised as a "known limitation" in the original model card rather than recognized as a fixable bug. That was the clearest lesson here — a system can look correct in the profiles you happen to try and still be silently wrong for input you didn't think to test.
+
 ---
 
-## Limitations and Risks
+## Limitations
 
-Summarize some limitations of your recommender.
+- Only 18 songs in the catalog, most genres/moods represented by a single song — rankings can flip based on very small scoring differences.
+- Genre and energy are correlated in this dataset (high-energy genres are all rock/metal/pop/house; low-energy genres are all lofi/classical/folk/ambient), so a profile like "peaceful metal" can never get a real genre match and a real energy match at the same time.
+- Genre/mood matching is still exact-string (case-insensitive now, but `"pop"` and `"indie pop"` are still unrelated to the scorer).
+- No personalization or learning — every recommendation is stateless and based only on the stated profile, never on past feedback.
 
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
+A deeper bias analysis, plus the graded responsible-AI reflection (how AI tools were used during development, one helpful and one flawed AI suggestion, and a fuller discussion of system limitations), is in [`model_card.md`](model_card.md).
 
 ---
 
 ## Reflection
 
-Read and complete `model_card.md`:
-
-[**Model Card**](model_card.md)
-
-Write 1 to 2 paragraphs here about what you learned:
-
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
-
-
-
+Building the reliability layer changed how I think about what makes a "simple" system trustworthy. The scoring rule itself is just weighted addition, but wrapping it in guardrails, confidence scoring, explanations, and logging is what actually makes it usable by someone other than the person who wrote it — and, as it turned out, is also what exposed a real bug (case-sensitive matching) that pure scoring-logic testing had missed. The biggest takeaway: correctness and reliability are different properties. A scoring formula can be mathematically correct and still be an unreliable system if nothing checks its inputs, explains its outputs, or records what it did.

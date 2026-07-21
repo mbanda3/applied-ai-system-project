@@ -107,3 +107,38 @@ AI tools helped me the most with generating adversarial test profiles I wouldn't
 What surprised me most is how "smart" this simple system can feel even though it's just addition and string comparison. Sunrise City topping the list for a Happy Pop fan feels like a real recommendation, even though under the hood it's just four numbers added together.
 
 If I kept extending this, I'd try fuzzy genre matching, add a way to flag conflicting preferences instead of silently resolving them, and let a user rate the results so the weights could adjust over time instead of staying fixed forever.
+
+---
+
+## 10. Responsible AI Reflection
+
+### What are the limitations or biases in your system?
+
+The core scoring biases are covered in [Section 6](#6-limitations-and-bias) — genre dominance, the catalog's genre/energy correlation creating a filter bubble, and brittle exact-string matching. The Reliability & Testing System added in this update introduces a few of its own that are worth naming directly:
+
+- **Confidence is not a calibrated probability.** `compute_confidence()` is just `score / 4.5` — it tells you what fraction of the maximum possible additive score a song earned, not any measured likelihood that the recommendation is actually good. Displaying it as "91%" invites more trust than the underlying arithmetic actually supports.
+- **"Valid" genres and moods are defined entirely by an 18-song catalog.** The guardrail derives its allowed values from `data/songs.csv`, so a real genre like "k-pop" is rejected only because this particular dataset doesn't contain it — not because it's an invalid concept. The guardrail is only as complete as the data it's built from.
+- **The log has no retention limit.** `logs/recommendation_log.txt` grows forever and records every query, accepted or rejected, with no expiry or anonymization. That's harmless for a classroom project with made-up profiles, but it's a pattern that wouldn't be acceptable if it were ever pointed at real user input.
+
+### Could your AI be misused, and how would you prevent that?
+
+This project's blast radius is small — it's a toy recommender over 18 songs — but the *patterns* it demonstrates could be misused if copied into something higher-stakes:
+
+1. **Overstating how "AI" the system is.** A confidence percentage and a "why this recommendation" explanation can make a simple weighted-addition formula look like a learned model to someone who doesn't read the code. Prevention: this model card documents the exact formula (Section 3) and states plainly that confidence is a fraction of a max score, not a probability, so anyone auditing the system can see precisely what's producing the number.
+2. **Logging preferences without consent.** As shipped, the logger only ever records profiles that this project's own code generates. But the logging functions would happily record real, identifiable user input if wired into an actual product, with no consent flow or retention policy. Prevention: any real deployment would need explicit user consent before logging, a retention/expiry policy, and a way to delete a user's log history on request — none of which exists here because none of it was needed for a local classroom demo.
+3. **Reusing "confidence = fraction of max score" for higher-stakes ranking.** The same additive-scoring-plus-confidence-percentage pattern could be lifted into something that ranks people instead of songs (job applicants, loan applications, content moderation). This project's own documented biases — genre dominance, catalog-correlated attributes producing unfair trade-offs — are a concrete demonstration of how an unvalidated linear scorer can systematically favor certain inputs. Prevention: this pattern should stay scoped to low-stakes preference matching, and never be repurposed for decisions that affect someone's opportunities without real calibration, fairness testing, and human review — none of which this project attempts.
+
+### What surprised you while testing your AI's reliability?
+
+Two things stood out:
+
+1. **Adding validation surfaced an actual bug, not just a filter.** `{"genre": "Pop", "mood": "Happy"}` had been scoring as a *complete* genre and mood mismatch — losing the full +3.0 combined bonus — purely because of capitalization, even though it represents identical real preferences to `{"genre": "pop", "mood": "happy"}`. The original model card had listed this as an accepted limitation ("not intended for people who type genres with different capitalization"), but writing the input-validation guardrail forced me to actually look at it, and it turned out to be a one-line fix (normalize case before scoring), not a permanent constraint of the system.
+2. **The reliability feature itself crashed the program on first run.** Not from bad user input — from printing the ✓/✗ explanation characters. Windows' default console encoding (cp1252) can't represent those characters, so the very first run of the upgraded pipeline raised a `UnicodeEncodeError` before a single guardrail even got exercised. It was a reminder that "reliability" has to include testing the reliability code itself end-to-end in the real runtime environment, not just reasoning about whether the guardrail logic looks right.
+
+### Describe your collaboration with AI during this project
+
+I worked with Claude (Claude Code) to design and implement the entire Reliability & Testing System feature — the guardrails, confidence scoring, explanations, logging, tests, README, and this model card — reviewing what it generated and running the actual program at each step rather than accepting code uninspected.
+
+**One helpful suggestion:** the assignment's own example guardrail code hardcodes `VALID_GENRES = {"pop", "rock", "hip-hop", "country", "jazz"}`. Instead of copying that literally, the AI derived valid genres and moods dynamically from `data/songs.csv` at load time. This mattered concretely: the actual catalog includes genres like `"lofi"`, `"synthwave"`, and `"indie pop"` that aren't in the example's hardcoded set at all, so using the literal instructions would have made the guardrail reject perfectly valid catalog genres. Tying validation to the real data was a better design than the one explicitly suggested in the assignment instructions.
+
+**One flawed suggestion:** the AI's first version of the explanation output used raw ✓/✗ Unicode characters without accounting for Windows' default console encoding, which crashed the program the first time it was actually run (see above). It wasn't something that looked wrong on inspection — it only surfaced once we ran `python -m src.main` and hit a `UnicodeEncodeError`. The fix (forcing UTF-8 stdout) was simple once found, but it's a clear case of an AI-written suggestion that read as correct and wasn't, until it was actually executed in the target environment.
