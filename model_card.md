@@ -93,8 +93,8 @@ Genre matching is weighted so heavily that it wins the top spot even when the mo
 ## 8. Future Work
 
 - Let genre partially match related genres (like "pop" and "indie pop") instead of an all-or-nothing exact match.
-- Clamp the energy input to 0–1 so the score can never go negative.
-- Warn the user when their stated preferences conflict with each other (like "peaceful metal"), instead of silently picking a winner and hiding the tradeoff.
+- ~~Clamp the energy input~~ — done: out-of-range energy is now rejected by validation.
+- ~~Warn the user when preferences conflict~~ — done: `check_result_quality()` now warns (and logs) when the top result drops the requested genre or mood. Still to do: let the user resolve the conflict, or re-rank.
 
 ---
 
@@ -135,10 +135,16 @@ Two things stood out:
 1. **Adding validation surfaced an actual bug, not just a filter.** `{"genre": "Pop", "mood": "Happy"}` had been scoring as a *complete* genre and mood mismatch — losing the full +3.0 combined bonus — purely because of capitalization, even though it represents identical real preferences to `{"genre": "pop", "mood": "happy"}`. The original model card had listed this as an accepted limitation ("not intended for people who type genres with different capitalization"), but writing the input-validation guardrail forced me to actually look at it, and it turned out to be a one-line fix (normalize case before scoring), not a permanent constraint of the system.
 2. **The reliability feature itself crashed the program on first run.** Not from bad user input — from printing the ✓/✗ explanation characters. Windows' default console encoding (cp1252) can't represent those characters, so the very first run of the upgraded pipeline raised a `UnicodeEncodeError` before a single guardrail even got exercised. It was a reminder that "reliability" has to include testing the reliability code itself end-to-end in the real runtime environment, not just reasoning about whether the guardrail logic looks right.
 
+### What surprised you while testing your AI's reliability? (addendum)
+
+3. **Confidence stayed high when the answer was wrong.** For "peaceful metal" the top result was an *angry* metal song with 77% confidence, and for "energetic classical" the system returned a house track at 55%. Because genre alone is worth 2.0 of 4.5 points, confidence can look reassuring while ignoring half the request. The human-evaluation table in the README records both as failures.
+
 ### Describe your collaboration with AI during this project
 
-I worked with Claude (Claude Code) to design and implement the entire Reliability & Testing System feature — the guardrails, confidence scoring, explanations, logging, tests, README, and this model card — reviewing what it generated and running the actual program at each step rather than accepting code uninspected.
+I worked with Claude (Claude Code) to design and implement the guardrails, confidence scoring, explanations, logging, tests, README and this model card, running the program and test suite at each step rather than accepting code uninspected.
 
-**One helpful suggestion:** the assignment's own example guardrail code hardcodes `VALID_GENRES = {"pop", "rock", "hip-hop", "country", "jazz"}`. Instead of copying that literally, the AI derived valid genres and moods dynamically from `data/songs.csv` at load time. This mattered concretely: the actual catalog includes genres like `"lofi"`, `"synthwave"`, and `"indie pop"` that aren't in the example's hardcoded set at all, so using the literal instructions would have made the guardrail reject perfectly valid catalog genres. Tying validation to the real data was a better design than the one explicitly suggested in the assignment instructions.
+The self-check warning (`check_result_quality()`) was added after the human evaluation exposed that confidence stayed high on conflicting profiles; it warns rather than adjusting confidence so the 4.5-point formula stays simple.
 
-**One flawed suggestion:** the AI's first version of the explanation output used raw ✓/✗ Unicode characters without accounting for Windows' default console encoding, which crashed the program the first time it was actually run (see above). It wasn't something that looked wrong on inspection — it only surfaced once we ran `python -m src.main` and hit a `UnicodeEncodeError`. The fix (forcing UTF-8 stdout) was simple once found, but it's a clear case of an AI-written suggestion that read as correct and wasn't, until it was actually executed in the target environment.
+**One suggestion I accepted:** deriving valid genres and moods from `data/songs.csv` instead of the hardcoded `VALID_GENRES = {"pop", "rock", "hip-hop", "country", "jazz"}` in the assignment's example. The real catalog contains `lofi`, `synthwave` and `indie pop`, which the hardcoded set would have wrongly rejected, so tying validation to the data was a better fit.
+
+**One suggestion I did not accept as written:** a more forgiving fuzzy genre matcher (e.g. treating `indie pop` as a partial match for `pop`), which would soften genre dominance. I scoped it down to only case-insensitive normalization. Fuzzy matching would make the score impossible to explain in one line and would add partial-credit rules that are hard to test with an 18-song catalog; it is listed under Future Work instead. Similarly, the AI's first explanation output used raw ✓/✗ characters that crashed on Windows' cp1252 console (`UnicodeEncodeError`); I kept the characters but forced UTF-8 stdout rather than replacing them with plain ASCII.

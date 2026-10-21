@@ -58,3 +58,59 @@ def test_logger_writes_recommendation_to_file(tmp_path):
         content = f.read()
     assert "Test Song" in content
     assert "0.91" in content
+
+
+def test_missing_genre_is_rejected_not_crashed():
+    _, errors = validate_profile({"mood": "happy", "energy": 0.8}, SONGS)
+    assert "Genre is required." in errors
+
+
+def test_non_numeric_energy_is_rejected():
+    _, errors = validate_profile({"genre": "pop", "mood": "happy", "energy": "loud"}, SONGS)
+    assert any("energy" in error.lower() for error in errors)
+
+
+def test_capitalization_is_normalized():
+    profile, errors = validate_profile({"genre": "Pop", "mood": "Happy", "energy": 0.8}, SONGS)
+    assert errors == []
+    assert (profile["genre"], profile["mood"]) == ("pop", "happy")
+
+
+def test_confidence_is_clamped_to_unit_interval():
+    assert compute_confidence(0.0) == 0.0
+    assert compute_confidence(4.5) == 1.0
+    assert compute_confidence(99.0) == 1.0
+    assert compute_confidence(-3.0) == 0.0
+
+
+def test_top_recommendation_for_pop_happy_is_sunrise_city():
+    profile, _ = validate_profile({"genre": "pop", "mood": "happy", "energy": 0.8}, SONGS)
+    top_song, top_score, _ = recommend_songs(profile, SONGS, k=5)[0]
+    assert top_song["title"] == "Sunrise City"
+    assert compute_confidence(top_score) > 0.9
+
+
+def test_rejected_input_is_logged_with_reason(tmp_path):
+    from src.logger import log_rejected_input
+
+    log_path = log_rejected_input({"genre": "edm"}, ["Invalid genre 'edm'."], log_dir=str(tmp_path))
+    with open(log_path, encoding="utf-8") as f:
+        content = f.read()
+    assert "edm" in content
+
+
+def test_conflicting_profile_triggers_warning():
+    from src.recommender import check_result_quality
+
+    profile, _ = validate_profile({"genre": "metal", "mood": "peaceful", "energy": 0.95}, SONGS)
+    top_song, _, _ = recommend_songs(profile, SONGS, k=5)[0]
+    warnings = check_result_quality(profile, top_song, SONGS)
+    assert any("No song in the catalog" in w for w in warnings)
+
+
+def test_matching_profile_has_no_warning():
+    from src.recommender import check_result_quality
+
+    profile, _ = validate_profile({"genre": "pop", "mood": "happy", "energy": 0.8}, SONGS)
+    top_song, _, _ = recommend_songs(profile, SONGS, k=5)[0]
+    assert check_result_quality(profile, top_song, SONGS) == []

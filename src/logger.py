@@ -27,6 +27,7 @@ def log_recommendation(
     log_dir: str = DEFAULT_LOG_DIR,
     log_file: str = DEFAULT_LOG_FILE,
     timestamp: Optional[str] = None,
+    warnings: Optional[List[str]] = None,
 ) -> str:
     """Append one recommendation entry to the log file. Returns the path written to."""
     path = _log_path(log_dir, log_file)
@@ -38,7 +39,10 @@ def log_recommendation(
         f.write(f"Mood: {user_prefs.get('mood', '')}\n")
         f.write(f"Energy: {user_prefs.get('energy', '')}\n")
         f.write(f"Recommendation: {song['title']} by {song['artist']}\n")
-        f.write(f"Confidence: {confidence:.2f}\n\n")
+        f.write(f"Confidence: {confidence:.2f}\n")
+        if warnings:
+            f.write(f"Warnings: {'; '.join(warnings)}\n")
+        f.write("\n")
 
     return path
 

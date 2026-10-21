@@ -10,10 +10,12 @@ flowchart TD
 
     CAT --> SC
 
+    SC --> CHK["Self-Check<br/>check_result_quality()<br/>warns if top result drops genre/mood"]
     SC --> CONF["Confidence Scoring<br/>compute_confidence()<br/>score / 4.5 -> 0-100%"]
     SC --> EXP["Explanation Generator<br/>explain_recommendation()<br/>plain-language checkmarks"]
 
-    CONF --> OUT["Console Output<br/>ranked songs, confidence %, reasons"]
+    CHK --> OUT
+    CONF --> OUT["Console Output<br/>ranked songs, confidence %, reasons, warnings"]
     EXP --> OUT
     REJ --> OUT
 
@@ -28,5 +30,6 @@ flowchart TD
 
     T1 -. "verifies" .-> V
     T1 -. "verifies" .-> LOG
+    T1 -. "verifies" .-> CHK
     T2 -. "verifies" .-> SC
     HUMAN -. "flags bugs / bad rankings" .-> TEST

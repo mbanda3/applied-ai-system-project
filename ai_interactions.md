@@ -1,5 +1,9 @@
 # AI Interactions Log
 
+## Summary (core project)
+
+The AI feature for this project is the **Reliability & Testing System** (guardrails, confidence scoring, explanations, a result self-check, logging, and a pytest suite). I used Claude Code to implement and extend it, then ran the app and test suite after each change. See the Responsible AI Reflection in [model_card.md](model_card.md) for the accepted/changed suggestions and limitations, and the Testing Summary in [README.md](README.md) for results (16/16 tests passing).
+
 > **Stretch features only.** Only fill in the sections that apply to stretch features you attempted. If you did not attempt a stretch feature, leave its section blank or delete it. This file is not required for the core project.
 
 ---

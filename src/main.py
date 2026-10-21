@@ -4,13 +4,14 @@ Command line runner for the Music Recommender Simulation.
 The recommendation pipeline is: validate the raw user profile (guardrails),
 score and rank songs, attach a confidence score and a plain-language
 explanation to each result, and log every recommendation (or rejection)
-to logs/recommendation_log.txt. Invalid input is rejected with a clear
-message instead of crashing the program.
+to logs/recommendation_log.txt. check_result_quality() then warns when the
+top result drops part of the stated profile. Invalid input is rejected with
+a clear message instead of crashing the program.
 """
 
 import sys
 
-from src.recommender import load_songs, recommend_songs, compute_confidence, explain_recommendation
+from src.recommender import load_songs, recommend_songs, compute_confidence, explain_recommendation, check_result_quality
 from src.validation import validate_profile
 from src.logger import log_recommendation, log_rejected_input
 
@@ -76,7 +77,10 @@ def run_recommendation_pipeline(raw_profile: dict, songs: list, k: int = 5) -> N
             print(f"     {line}")
 
     top_song, top_score, _ = recommendations[0]
-    log_recommendation(user_prefs, top_song, compute_confidence(top_score))
+    warnings = check_result_quality(user_prefs, top_song, songs)
+    for warning in warnings:
+        print(f"\n   WARNING: {warning}")
+    log_recommendation(user_prefs, top_song, compute_confidence(top_score), warnings=warnings)
     print("\nRecommendation logged successfully.")
 
 

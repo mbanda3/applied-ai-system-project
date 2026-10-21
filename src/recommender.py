@@ -138,3 +138,32 @@ def explain_recommendation(user_prefs: Dict, song: Dict) -> List[str]:
             lines.append(f"✗ Not very acoustic ({song['acousticness']:.2f})")
 
     return lines
+
+
+def check_result_quality(user_prefs: Dict, top_song: Dict, songs: List[Dict]) -> List[str]:
+    """
+    Self-check on a finished ranking: return warnings when the top result
+    ignores part of the stated profile (e.g. no song has both the requested
+    genre and mood). Empty list means the top result honors genre and mood.
+    """
+    warnings: List[str] = []
+    genre_ok = top_song["genre"].strip().lower() == user_prefs["genre"]
+    mood_ok = top_song["mood"].strip().lower() == user_prefs["mood"]
+    if genre_ok and mood_ok:
+        return warnings
+
+    both_exist = any(
+        s["genre"].strip().lower() == user_prefs["genre"]
+        and s["mood"].strip().lower() == user_prefs["mood"]
+        for s in songs
+    )
+    if not both_exist:
+        warnings.append(
+            f"No song in the catalog is both {user_prefs['genre']} and {user_prefs['mood']}; "
+            "the top result trades one preference away."
+        )
+    if not genre_ok:
+        warnings.append(f"Top result is genre '{top_song['genre']}', not '{user_prefs['genre']}'.")
+    if not mood_ok:
+        warnings.append(f"Top result mood is '{top_song['mood']}', not '{user_prefs['mood']}'.")
+    return warnings
